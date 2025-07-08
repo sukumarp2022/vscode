@@ -36,6 +36,8 @@ import { CodeMapperService, ICodeMapperService } from '../common/chatCodeMapperS
 import '../common/chatColors.js';
 import { IChatEditingService } from '../common/chatEditingService.js';
 import { ChatEntitlement, ChatEntitlementService, IChatEntitlementService } from '../common/chatEntitlementService.js';
+import { HooksService } from '../common/hooksServiceImpl.js';
+import { IHooksService } from '../common/hooksService.js';
 import { chatVariableLeader } from '../common/chatParserTypes.js';
 import { IChatService } from '../common/chatService.js';
 import { ChatService } from '../common/chatServiceImpl.js';
@@ -470,6 +472,54 @@ configurationRegistry.registerConfiguration({
 			description: nls.localize('chat.signInDialogVariant', "Control variations of the sign-in dialog."),
 			default: 'default',
 			tags: ['onExp', 'experimental']
+		},
+		'chat.hooks': {
+			type: 'object',
+			description: nls.localize('chat.hooks', "Configure hooks to customize Copilot behavior at various stages of the chat flow."),
+			default: {},
+			additionalProperties: {
+				type: 'object',
+				properties: {
+					'enabled': {
+						type: 'boolean',
+						description: nls.localize('chat.hooks.enabled', "Enable or disable this hook."),
+						default: true
+					},
+					'script': {
+						type: 'string',
+						description: nls.localize('chat.hooks.script', "Path to a script file to execute for this hook.")
+					},
+					'command': {
+						type: 'string',
+						description: nls.localize('chat.hooks.command', "Command to execute for this hook.")
+					},
+					'args': {
+						type: 'array',
+						items: { type: 'string' },
+						description: nls.localize('chat.hooks.args', "Arguments to pass to the command.")
+					},
+					'timeout': {
+						type: 'number',
+						description: nls.localize('chat.hooks.timeout', "Timeout in milliseconds for hook execution."),
+						default: 5000,
+						minimum: 100,
+						maximum: 30000
+					}
+				}
+			},
+			examples: [
+				{
+					'pre-copilot-chat-prompt': {
+						'script': './scripts/preprocess-prompt.js',
+						'timeout': 5000
+					},
+					'pre-context-attach': {
+						'command': 'python',
+						'args': ['./security/filter-context.py', '--sanitize'],
+						'timeout': 3000
+					}
+				}
+			]
 		}
 	}
 });
@@ -752,6 +802,7 @@ registerSingleton(IPromptsService, PromptsService, InstantiationType.Delayed);
 registerSingleton(IChatContextPickService, ChatContextPickService, InstantiationType.Delayed);
 registerSingleton(IChatModeService, ChatModeService, InstantiationType.Delayed);
 registerSingleton(IChatAttachmentResolveService, ChatAttachmentResolveService, InstantiationType.Delayed);
+registerSingleton(IHooksService, HooksService, InstantiationType.Delayed);
 
 registerWorkbenchContribution2(ChatEditingNotebookFileSystemProviderContrib.ID, ChatEditingNotebookFileSystemProviderContrib, WorkbenchPhase.BlockStartup);
 

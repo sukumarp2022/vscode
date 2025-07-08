@@ -39,6 +39,7 @@ import { IChatRequestVariableEntry, isImageVariableEntry } from './chatVariableE
 import { ChatAgentLocation, ChatConfiguration, ChatModeKind } from './constants.js';
 import { ChatMessageRole, IChatMessage, ILanguageModelsService } from './languageModels.js';
 import { ILanguageModelToolsService } from './languageModelToolsService.js';
+import { IHooksService } from './hooksService.js';
 
 const serializedChatKey = 'interactive.sessions';
 
@@ -161,6 +162,7 @@ export class ChatService extends Disposable implements IChatService {
 		@IWorkbenchAssignmentService private readonly experimentService: IWorkbenchAssignmentService,
 		@IChatTransferService private readonly chatTransferService: IChatTransferService,
 		@ILanguageModelsService private readonly languageModelsService: ILanguageModelsService,
+		@IHooksService private readonly hooksService: IHooksService,
 	) {
 		super();
 
@@ -591,7 +593,6 @@ export class ChatService extends Disposable implements IChatService {
 	async sendRequest(sessionId: string, request: string, options?: IChatSendRequestOptions): Promise<IChatSendRequestData | undefined> {
 		this.trace('sendRequest', `sessionId: ${sessionId}, message: ${request.substring(0, 20)}${request.length > 20 ? '[...]' : ''}}`);
 
-
 		if (!request.trim() && !options?.slashCommand && !options?.agentId) {
 			this.trace('sendRequest', 'Rejected empty message');
 			return;
@@ -605,6 +606,23 @@ export class ChatService extends Disposable implements IChatService {
 		if (this._pendingRequests.has(sessionId)) {
 			this.trace('sendRequest', `Session ${sessionId} already has a pending request`);
 			return;
+		}
+
+		// Execute pre-copilot-chat-prompt hook
+		if (this.hooksService.hasHooks()) {
+			const hookContext = {
+				sessionId,
+				message: request,
+				attachedContext: options?.attachedContext
+			};
+			const hookResult = await this.hooksService.executePreCopilotChatPromptHook(hookContext, new CancellationTokenSource().token);
+			if (!hookResult.shouldContinue) {
+				this.trace('sendRequest', 'Request cancelled by pre-copilot-chat-prompt hook');
+				return;
+			}
+			if (hookResult.modifiedMessage) {
+				request = hookResult.modifiedMessage;
+			}
 		}
 
 		const requests = model.getRequests();
@@ -749,6 +767,26 @@ export class ChatService extends Disposable implements IChatService {
 							message = getPromptText(request.message).message;
 						} else {
 							variableData = { variables: this.prepareContext(request.attachedContext) };
+							
+							// Execute pre-context-attach hook
+							if (this.hooksService.hasHooks()) {
+								const hookContext = {
+									sessionId,
+									message: request.message.text,
+									variables: variableData,
+									attachedContext: request.attachedContext
+								};
+								const hookResult = await this.hooksService.executePreContextAttachHook(hookContext, token);
+								if (!hookResult.shouldContinue) {
+									this.trace('sendRequest', 'Request cancelled by pre-context-attach hook');
+									return;
+								}
+								if (hookResult.modifiedContext) {
+									request.attachedContext = hookResult.modifiedContext;
+									variableData = { variables: this.prepareContext(hookResult.modifiedContext) };
+								}
+							}
+							
 							model.updateRequest(request, variableData);
 
 							const promptTextResult = getPromptText(request.message);
@@ -869,6 +907,21 @@ export class ChatService extends Disposable implements IChatService {
 					model.setResponse(request, rawResult);
 					completeResponseCreated();
 					this.trace('sendRequest', `Provider returned response for session ${model.sessionId}`);
+
+					// Execute post-copilot-response hook
+					if (this.hooksService.hasHooks()) {
+						const hookContext = {
+							sessionId,
+							message: request.message.text,
+							variables: request.variableData,
+							attachedContext: request.attachedContext,
+							response: request.response?.response.toString() ?? ''
+						};
+						const hookResult = await this.hooksService.executePostCopilotResponseHook(hookContext, token);
+						if (!hookResult.success) {
+							this.trace('sendRequest', 'Post-copilot-response hook failed');
+						}
+					}
 
 					model.completeResponse(request);
 					if (agentOrCommandFollowups) {
