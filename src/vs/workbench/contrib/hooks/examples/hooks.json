@@ -1,0 +1,75 @@
+{
+	"$schema": "vscode://schemas/hooks",
+	"hooks": {
+		"pre-copilot-prompt": [
+			{
+				"script": "./scripts/preprocess-prompt.js",
+				"timeout": 5000,
+				"abortOnFailure": true,
+				"env": {
+					"HOOK_TYPE": "pre-copilot-prompt"
+				}
+			}
+		],
+		"pre-context-attach": [
+			{
+				"command": "python",
+				"args": ["./security/filter-context.py", "--sanitize", "--remove-secrets"],
+				"timeout": 3000,
+				"abortOnFailure": true,
+				"cwd": "${workspaceFolder}"
+			}
+		],
+		"pre-commit": [
+			{
+				"script": "./hooks/lint-check.sh",
+				"timeout": 10000,
+				"abortOnFailure": true
+			},
+			{
+				"script": "./hooks/security-scan.js",
+				"timeout": 15000,
+				"abortOnFailure": false
+			}
+		],
+		"pre-push": [
+			{
+				"command": "npm",
+				"args": ["run", "test"],
+				"timeout": 30000,
+				"abortOnFailure": true,
+				"cwd": "${workspaceFolder}"
+			}
+		],
+		"pre-pull": [
+			{
+				"script": "./hooks/backup-local-changes.sh",
+				"timeout": 5000,
+				"abortOnFailure": false
+			}
+		],
+		"post-copilot-response": [
+			{
+				"script": "./hooks/log-copilot-usage.js",
+				"timeout": 1000,
+				"abortOnFailure": false,
+				"async": true
+			}
+		],
+		"workspace-open": [
+			{
+				"command": "echo",
+				"args": ["Workspace opened: ${workspaceFolder}"],
+				"timeout": 1000,
+				"abortOnFailure": false
+			}
+		],
+		"file-save": [
+			{
+				"script": "./hooks/format-on-save.js",
+				"timeout": 2000,
+				"abortOnFailure": false
+			}
+		]
+	}
+}
