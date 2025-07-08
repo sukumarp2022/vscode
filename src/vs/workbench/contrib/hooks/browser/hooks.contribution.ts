@@ -11,9 +11,14 @@ import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '.
 import { localize } from '../../../../nls.js';
 import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from '../../../common/contributions.js';
 import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
+import { HooksWorkbenchContribution } from './workbenchIntegration.js';
 
 // Register the hooks service
 registerSingleton(IHooksService, HooksService, false);
+
+// Register workbench contribution
+const workbenchRegistry = Registry.as<IWorkbenchContributionsRegistry>(WorkbenchExtensions.Workbench);
+workbenchRegistry.registerWorkbenchContribution(HooksWorkbenchContribution, LifecyclePhase.Ready);
 
 // Register configuration schema
 const configurationRegistry = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration);
