@@ -67,24 +67,34 @@ class EnhancePromptAction extends Action2 {
 
 		const widget = widgetService.lastFocusedWidget;
 		if (!widget?.input) {
+			notificationService.warn(localize('chat.enhancePrompt.noWidget', 'No active chat window found.'));
 			return;
 		}
 
-		const originalPrompt = widget.input.inputEditor.getValue().trim();
-		if (!originalPrompt) {
+		const originalPrompt = widget.input.inputEditor.getValue();
+		const trimmedPrompt = originalPrompt.trim();
+		
+		if (!trimmedPrompt) {
 			notificationService.warn(localize('chat.enhancePrompt.emptyPrompt', 'Please enter a prompt first before enhancing it.'));
+			// Focus the input editor to help the user
+			widget.input.inputEditor.focus();
 			return;
 		}
 
-		const originalLength = originalPrompt.length;
+		// Don't enhance if the prompt is already very long (>500 chars) as it's likely already detailed
+		if (trimmedPrompt.length > 500) {
+			notificationService.info(localize('chat.enhancePrompt.alreadyDetailed', 'Your prompt is already quite detailed. Consider breaking it into smaller, focused questions for better results.'));
+			return;
+		}
+
+		const originalLength = trimmedPrompt.length;
 		let enhancedLength = 0;
 		let success = false;
 		let errorCode: string | undefined;
 
 		try {
-			// For now, implement a simple enhancement algorithm
-			// This will be enhanced to use LM services in subsequent iterations
-			const enhancedPrompt = this.enhancePromptLocally(originalPrompt);
+			// Implement enhancement logic
+			const enhancedPrompt = this.enhancePromptLocally(trimmedPrompt);
 			
 			if (!enhancedPrompt.trim()) {
 				errorCode = 'EMPTY_ENHANCEMENT';
@@ -92,13 +102,23 @@ class EnhancePromptAction extends Action2 {
 			}
 
 			enhancedLength = enhancedPrompt.length;
+			
+			// Check if enhancement actually changed something meaningful
+			if (enhancedPrompt.trim() === trimmedPrompt) {
+				notificationService.info(localize('chat.enhancePrompt.noImprovement', 'Your prompt is already well-structured and doesn\'t need enhancement.'));
+				return;
+			}
+
 			success = true;
 
 			// Replace the original prompt with the enhanced version
 			widget.input.setValue(enhancedPrompt, false);
 			
+			// Focus back to the input for user review
+			widget.input.inputEditor.focus();
+			
 			// Show success notification
-			notificationService.info(localize('chat.enhancePrompt.success', 'Prompt enhanced successfully. Review and edit as needed.'));
+			notificationService.info(localize('chat.enhancePrompt.success', 'Prompt enhanced successfully. Review and edit as needed before submitting.'));
 
 		} catch (error) {
 			success = false;
@@ -117,29 +137,64 @@ class EnhancePromptAction extends Action2 {
 
 	private enhancePromptLocally(originalPrompt: string): string {
 		// Simple prompt enhancement logic for the initial implementation
-		const words = originalPrompt.trim().split(/\s+/);
+		const trimmed = originalPrompt.trim();
+		const words = trimmed.split(/\s+/);
+		const length = words.length;
 		
-		// If it's very short, add more context suggestions
-		if (words.length <= 3) {
-			return `${originalPrompt}. Please provide detailed explanations with examples and step-by-step guidance.`;
+		// Handle single words or very short prompts
+		if (length === 1) {
+			const word = words[0].toLowerCase();
+			if (word.includes('debug') || word.includes('fix') || word.includes('error')) {
+				return `Please help me debug and fix ${originalPrompt}. Provide step-by-step troubleshooting guidance with common solutions and best practices.`;
+			}
+			if (word.includes('create') || word.includes('build') || word.includes('make')) {
+				return `Please guide me through creating ${originalPrompt} with detailed step-by-step instructions, code examples, and best practices.`;
+			}
+			return `Please explain ${originalPrompt} in detail with practical examples, step-by-step guidance, and real-world use cases.`;
 		}
 		
-		// If it doesn't ask for specific output format, add guidance
-		if (!originalPrompt.toLowerCase().includes('explain') && 
-			!originalPrompt.toLowerCase().includes('how') && 
-			!originalPrompt.toLowerCase().includes('provide') &&
-			!originalPrompt.toLowerCase().includes('show') &&
-			!originalPrompt.toLowerCase().includes('give')) {
-			return `Please explain ${originalPrompt} in detail with practical examples and clear step-by-step instructions.`;
+		// Handle very short prompts (2-3 words)
+		if (length <= 3) {
+			if (trimmed.toLowerCase().includes('how to') || trimmed.toLowerCase().includes('how do')) {
+				return `${originalPrompt} Please provide detailed step-by-step instructions with code examples and best practices.`;
+			}
+			return `${originalPrompt}. Please provide comprehensive explanations with practical examples, step-by-step guidance, and relevant code snippets.`;
 		}
 		
-		// If it's already reasonably detailed, add specific output format request
-		if (words.length > 5 && !originalPrompt.includes('format') && !originalPrompt.includes('structure')) {
-			return `${originalPrompt} Please structure your response with clear headings, bullet points, and practical examples where applicable.`;
+		// Check if it's already asking for specific things
+		const lowerPrompt = trimmed.toLowerCase();
+		const hasSpecificRequest = lowerPrompt.includes('explain') || 
+									lowerPrompt.includes('how') || 
+									lowerPrompt.includes('provide') ||
+									lowerPrompt.includes('show') ||
+									lowerPrompt.includes('give') ||
+									lowerPrompt.includes('create') ||
+									lowerPrompt.includes('help');
+		
+		// Check if it already mentions format or structure
+		const hasFormatRequest = lowerPrompt.includes('format') || 
+								lowerPrompt.includes('structure') ||
+								lowerPrompt.includes('example') ||
+								lowerPrompt.includes('step') ||
+								lowerPrompt.includes('detail');
+		
+		// For medium-length prompts without specific requests
+		if (length <= 10 && !hasSpecificRequest) {
+			return `Please explain ${originalPrompt} in detail with practical examples and clear step-by-step instructions. Include relevant code snippets and best practices.`;
 		}
 		
-		// For medium-length prompts, add specificity
-		return `${originalPrompt} Please provide a comprehensive response with detailed explanations, relevant examples, and actionable insights.`;
+		// For longer prompts that already have specific requests but lack format guidance
+		if (hasSpecificRequest && !hasFormatRequest) {
+			return `${originalPrompt} Please structure your response with clear headings, bullet points, code examples, and actionable steps where applicable.`;
+		}
+		
+		// For already detailed prompts, add context for better responses
+		if (length > 10) {
+			return `${originalPrompt} Please provide a comprehensive response with detailed explanations, relevant examples, potential alternatives, and practical implementation guidance.`;
+		}
+		
+		// Default enhancement for medium-length prompts
+		return `${originalPrompt} Please provide a detailed response with explanations, examples, and actionable insights.`;
 	}
 }
 
