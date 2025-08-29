@@ -20,7 +20,7 @@ type EnhancePromptEvent = {
 	originalLength: number;
 	enhancedLength: number;
 	success: boolean;
-	errorCode?: string;
+	errorCode: string;
 };
 
 type EnhancePromptClassification = {
@@ -90,7 +90,7 @@ class EnhancePromptAction extends Action2 {
 		const originalLength = trimmedPrompt.length;
 		let enhancedLength = 0;
 		let success = false;
-		let errorCode: string | undefined;
+		let errorCode = 'SUCCESS';
 
 		try {
 			// Implement enhancement logic
@@ -122,6 +122,9 @@ class EnhancePromptAction extends Action2 {
 
 		} catch (error) {
 			success = false;
+			if (!errorCode || errorCode === 'SUCCESS') {
+				errorCode = 'UNKNOWN_ERROR';
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			notificationService.error(localize('chat.enhancePrompt.error', 'Failed to enhance prompt: {0}', message));
 		} finally {
